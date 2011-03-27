@@ -1,0 +1,127 @@
+# version:1.4 loader:pf
+# $Id: smoove.dsm,v 1.5 2005/02/12 23:11:58 achemze Exp $
+#
+# smoove.dsm - Smoove B module for Darkstar/EPIC4
+#
+# Written by Joshua Hamor
+# Copyright (c) 2003 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script is intended to interface darkstar to Smoove B.
+#
+
+# Cleanup queue for sanity issues
+queue cleanup.smoove {
+	@ :tmp = delarray(SAYING);
+	^alias -SMOOVE;
+};
+
+# default variables.
+@ numa = 0;
+
+# set phrases.
+@ setitem(SAYING $numitems(SAYING) Girl, I know what you want. In Addition, as your man, I know what you need.);
+@ setitem(SAYING $numitems(SAYING) I will arrive at your door in a pure-white limousine.);
+@ setitem(SAYING $numitems(SAYING) Upon arriving, I will not honk the horn.);
+@ setitem(SAYING $numitems(SAYING) Instead, I will walk up the stairs of your apartment building and softly rap on your door.);
+@ setitem(SAYING $numitems(SAYING) When the door opens, I will compliment you on your outfit and your hair.);
+@ setitem(SAYING $numitems(SAYING) I will then command the limo driver to take your bags so that I may look deep into your eyes as I hold your hand at shoulder level.);
+@ setitem(SAYING $numitems(SAYING) As we walk down the stairs, I will whisper such romantic things to you as "Your body is like a delicate flower, and I am a trained gardener who knows that kind of flower inside and out.");
+@ setitem(SAYING $numitems(SAYING) When we reach the car, I will open the door for you because you deserve to be treated in such a fashion.);
+@ setitem(SAYING $numitems(SAYING) Inside the limo, I will have available an assortment of only the finest champagnes purchaseable from the best champagne stores in all of France.);
+@ setitem(SAYING $numitems(SAYING) There will also be cranberry juice. If you wish, you can mix the two together.);
+@ setitem(SAYING $numitems(SAYING) As our driver drives us, I will kiss you upon your neck, arms, and forehead. I will refrain from kissing your lips so that your passion for me will grow to the highest level imaginable.);
+@ setitem(SAYING $numitems(SAYING) I will let you control the air conditioning in the limo, as well, ensuring that the temperature inside is precisely to your wildest wishes.);
+@ setitem(SAYING $numitems(SAYING) After nearly 30 minutes in the limo, we will arrive at the airport, where we will board a private jet for the second part of our voyage. The inside of the jet will be filled with plush cushions on which you can sit. I will have pre-instructed the crew to treat you like a princess.);
+@ setitem(SAYING $numitems(SAYING) I will also treat you like a princess myself. We will talk only about the things you want to talk about. We will look out the window only at the things you want to look at.);
+@ setitem(SAYING $numitems(SAYING) We will talk only about the things you want to talk about.);
+@ setitem(SAYING $numitems(SAYING) I will hit you doggy-style in the airplane bathroom.);
+@ setitem(SAYING $numitems(SAYING) When we exit the plane, you will be overwhelmed by the exoticness of the location at which we have landed. You know that no other man but Smoove would treat you in such a fine manner. Furthermore, if you have forgotten to pack anything, such as a toothbrush or comb, we will pick up brand-new copies of these items from a local Rite-Aid or other such store, and I will pay for them entirely.);
+@ setitem(SAYING $numitems(SAYING) I will kiss you passionately, this time on the lips. Then, when I open the door, the room will be just as I requested it. Scented candles featuring only the finest smells in the world will be lit. Keith Sweat will be playing on the stereo. The windows will be open to let the ocean breeze cool your fine, cocoa skin. That is the Smoove guarantee.);
+@ setitem(SAYING $numitems(SAYING) I will then peel or slice an assortment of fruits brought in from only the finest local fruit establishments. Some fruits will be flown in from other tropical locations just so that you may sample them.);
+@ setitem(SAYING $numitems(SAYING) I will then feed you each piece, one at a time. I will wipe away any juice that flows out of your mouth and down your chin with a hand-selected cloth that is both soft and absorbent.);
+@ setitem(SAYING $numitems(SAYING) Once you have had your fill of fruit, we will take a romantic walk on the beach. At first, we will run in the surf and laugh in an extremely playful manner.);
+@ setitem(SAYING $numitems(SAYING) If you want to splash me, you can feel free to do so. I will not mind.);
+@ setitem(SAYING $numitems(SAYING) Then, as the sun goes down, things will get more serious as you cradle your head into my shoulder. At some point during our walk, I will kiss you with such passion that your knees will tremble.);
+@ setitem(SAYING $numitems(SAYING) Then, I will scoop you up and walk with you in my arms back to our shared bungalow. At no point while carrying you will I seem tired.);
+@ setitem(SAYING $numitems(SAYING) When we get to the bungalow, I will lay you down on the bed and wash the sand off your feet with a soap and water solution.);
+@ setitem(SAYING $numitems(SAYING) After drying your feet with a 100 percent cotton towel, I will take out a satchel filled with perfumed oils that I have personally selected for your particular feet.);
+@ setitem(SAYING $numitems(SAYING) I will rub your feet for three hours. While I am doing so, I will say a variety of compliments specially tailored to you. Among these comments will be "Your makeup looks so fine" and "I cannot wait to taste you.");
+@ setitem(SAYING $numitems(SAYING) I will also tell you that you look beautiful.);
+@ setitem(SAYING $numitems(SAYING) It is at this point that I will freak you wild to the break of dawn. Never before will you have been sexed like I will sex you then.);
+@ setitem(SAYING $numitems(SAYING) That is my solemn vow. You will wish we could freak nasty like that forever. Smoove will make that wish come true.);
+@ setitem(SAYING $numitems(SAYING) In the morning, room service will bring up a selection of pancakes, many of which will be embedded with chocolate chips or blueberries and/or other such delights.);
+@ setitem(SAYING $numitems(SAYING) There will also be muffins. If you prefer tea to coffee, I can have some ready for you.);
+@ setitem(SAYING $numitems(SAYING) If this scenario does not tempt you beyond all imagining, let me point out that I have only described Day One for you.);
+@ setitem(SAYING $numitems(SAYING) Smoove will have many more pleasures waiting for you over the remainder of the weekend. These pleasures may include a midnight swim under a waterfall, provided that there is a waterfall and that swimming is allowed past 11 p.m. You will remember this romantic trip forever.);
+
+# count total sayings.
+@ num = numitems(SAYING);
+
+alias smoove (...)
+{
+	if ([$0])
+	{
+		switch ($tolower($0))
+		{
+			(msg)	{ smoove.msg $1; };
+			(say)	{ smoove.say $1; };
+			(ver)	{ smoove.ver $1; };
+		};
+	} else {
+		smoove.usage;
+	};
+};
+
+# alias for msgs.
+alias smoove.msg (nick, void) 
+{
+	if (nick) 
+	{
+		if (numa <= num) 
+		{ 
+			@ :tmp = getitem(SAYING $numa);
+			@ numa++;
+			eval msg $nick $tmp;
+		}{
+			xecho -b -- [SMOOVE] The End.;
+			@ numa = 0;
+		};
+	}{
+		xecho -b -- [SMOOVE] /SMOOVE MSG <nick>;
+	};
+};
+
+# alias for public.
+alias smoove.say (nick, void) 
+{
+	if (nick) 
+	{
+		if (numa <= num) 
+		{ 
+			@ :tmp = getitem(SAYING $numa);
+			@ numa++ ;
+			eval say $nick: $tmp;
+		};
+	}{
+		xecho -b -- [SMOOVE] /SMOOVE SAY <nick>;
+	};
+};
+
+# smoove usage dialog.
+alias smoove.usage (void)
+{
+	xecho -b -- [SMOOVE] Usage:;
+	xecho -b -- [SMOOVE]   /SMOOVE <MSG|SAY|VER> <NICK>;
+};
+
+# broadcast your using smoove.
+alias smoove.version (nick, void) 
+{
+	if (nick)
+	{
+		eval say Aww baby, $nick, you're currently being SMOOVED.;
+	} else {
+		eval say Aww baby, you're currently being SMOOVED.;
+	};
+};

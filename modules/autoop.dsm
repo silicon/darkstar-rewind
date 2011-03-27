@@ -1,0 +1,395 @@
+# version:1.4 loader:pf
+#
+# autoop.dsm - Automatic Op module for Darkstar/EPIC5.
+#
+# Written by Joshua Hamor
+# Copyright (c) 2004,2011 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script functions as a autoop module for Darkstar.
+#
+# Uses serial hook 721.
+#
+########################################################################
+#
+#   AUTOOP		        toggle rather the module is on/off(1/0).
+#   AUTOOP_CHECK_OPS	toggle automatic aoplist reop'ng on/off.(1/0)
+#   AUTOOP_DELAY	    set timer delay before oping users.
+#   AUTOOP_DEBUG	    toggle debug information/messages on/off.(1/0)
+#   AUTOOP_FILE		    set location of autoop userlist.
+#   AUTOOP_MASK_TYPE	set mask() type for autoop.add_user 
+#		                  - see /help 6 mask for more details
+#   AUTOOP_TIMER	    toggles auto-oping on/off.(1/0)
+#
+########################################################################
+#
+# 			.,:([TODO]):,.
+# 			--------------
+#   	- /ctcp <nick> OP == op in all channels in list.
+#
+########################################################################
+
+queue cleanup.autoop {
+	^on #-mode_stripped 721 -"*";
+	^on #-join 721 -"*";
+	^on #-ctcp 721 -'% % \\\\[OP OPS\\\\] *';
+	^autoop.clear_arrays;
+	^alias -autoop;
+	^SET MODE_STRIPPER OFF;
+};
+
+# add configuration variables.
+addconfig -b AUTOOP 0;
+addconfig -b AUTOOP_CHECK_OPS 1;
+addconfig -b AUTOOP_TIMER 1;
+addconfig AUTOOP_DELAY 30;
+addconfig AUTOOP_DEBUG 0;
+addconfig AUTOOP_FILE autoop.sav;
+addconfig AUTOOP_MASK_TYPE 3;
+
+# default settings.
+^SET MODE_STRIPPER ON;
+
+# aliases.
+alias autoop (...)
+{
+	switch ($tolower($word(0 $0)))
+	{
+		(-add)	{ autoop.add_user $1 $2; }
+		(-del)	{ autoop.del_user $1 $2; }
+		(-list)	{ autoop.list_userfile; }
+		(-load)	{ autoop.load_userfile; }
+		(-reop)	{ autoop.reop_user; }
+		(-save)	{ autoop.save_userfile; }
+		(*)	    { autoop.usage; }
+	};
+};
+
+alias autoop.add_user (nick, chans, void)
+{
+	if (nick)
+	{
+		if (chans)
+		{
+			# process input depending on if its a nickname/hostname/ip/hostmask.
+			switch ($pass(!@. $nick))
+			{ 
+				() 
+				{ 
+				  # is a nickname.
+					@ :uh = mask($CONFIG[AUTOOP_MASK_TYPE] $uh($nick)); 
+				}
+				(.) 
+				{ 
+				  # is hostname or ip.
+					@ :uh = mask($CONFIG[AUTOOP_MASK_TYPE] $nick); 
+				}
+				(*) 
+				{ 
+				  # is already hostmask.
+					@ :uh = nick;
+				}
+			};
+
+			# verify we didnt get a bad userhost()
+			if (uh != [<UNKNOWN>@<UNKNOWN>])
+			{
+				fe ($split(, $chans)) chan
+				{
+					# if user isnt already on the list for this channel
+					if (!autoop.match_user($nick $chan))
+					{
+						@ setitem(AUTOOP.LIST $numitems(AUTOOP.LIST) $chan $uh);
+						xecho -b -say Notice: Added $nick \($uh\) to $chan;
+						^autoop.save_userfile;
+					} else { xecho -b Error: $nick found previously added to $chan; };
+				};
+			} else { xecho -b Error: Unable to gather user@host information.; };
+		} else { xecho -b Error: No Chans Supplied; };
+	} else { xecho -b Error: No Nick Supplied.; };
+};
+
+alias autoop.clear_arrays (void)
+{
+	for II in (LIST QUEUE)
+	{
+		@ delarray(AUTOOP.$II);
+	};
+};
+
+alias autoop.del_user (nick, chans, void)
+{
+	if (nick)
+	{
+		if (chans)
+		{
+			# process input depending on if its a nickname/hostname/ip/hostmask.
+			switch ($pass(!@. $nick))
+			{ 
+				() { 
+				  # is a nickname.
+					@ :uh = mask($CONFIG[AUTOOP_MASK_TYPE] $uh($nick)); 
+				}
+
+				(.) { 
+				  # is hostname or ip.
+					@ :uh = mask($CONFIG[AUTOOP_MASK_TYPE] $nick); 
+				}
+
+				(*) { 
+				  # is already hostmask.
+					@ :uh = nick;
+				}
+			};
+
+			# verify we didnt get a bad userhost()
+			if (uh != [<UNKNOWN>@<UNKNOWN>])
+			{
+				fe ($split(, $chans)) chan
+				{
+					if (autoop.match_user($uh $chan))
+					{
+						@ index = matchitem(AUTOOP.LIST $chan*$uh*);
+						if (delitem(AUTOOP.LIST $index) > [-1])
+						{
+							xecho -b -say Notice: Removed $nick from $chan;
+							^autoop.save_userfile;
+						};
+					} else { xecho -b Error: Unable to find $nick on userlist.; return; };
+				};
+			} else { xecho -b Error: Unable to gather user@host information.; };
+		} else { xecho -b Error: No Chans Supplied; };
+	} else { xecho -b Error: No Nick Supplied.; };
+};
+
+alias autoop.find_ops (chan, void)
+{
+	# if channel is supplied.
+	if (chan)
+	{
+		# if i'm opped on channel
+		if (ischanop($servernick() $chan))
+		{
+			# iterate through channel list.
+			for ii in ($onchannel($chan))
+			{
+				# if user is not opped.
+				if (!ischanop($ii $chan))
+				{
+					# if user is on autoop list.
+					if (autoop.match_user($userhost($ii) $chan))
+					{
+						# add to autoop queue.
+						autoop.queue_add $ii $chan;
+					};
+				};
+			};
+		};
+	# if channel is NOT supplied.
+	} else {
+		# display error message.
+		xecho -b Error: No Channel Supplied.;
+	};
+};
+
+alias autoop.list_userfile (void)
+{
+	@ :num = numitems(AUTOOP.LIST);
+	@ :reps = 0;
+	if (num)
+	{
+		while (num > reps)
+		{
+			# Thanks CrazyEddy for helping me with igetitems. -hmz
+			@ :data = igetitem(AUTOOP.LIST $reps);
+			@ :chan = word(0 $data);
+			@ :uh = word(1 $data);
+			xecho -b -say Notice: Chan: \[ $[15]chan \] \[ $[30]uh \];
+			@ reps++;
+		};
+	} else {
+		xecho -b Error: No Userlist Found.;
+	};
+};
+
+alias autoop.load_userfile (void)
+{
+	# if arrays exists, delete and reset them. 
+	if (numitems(AUTOOP.LIST)) { autoop.clear_arrays; };
+	if (fexist($DS.USER_DIR/$CONFIG.AUTOOP_FILE) == 1)
+	{
+		@ :fd = open($DS.USER_DIR/$CONFIG.AUTOOP_FILE R);
+		while (!eof($fd))
+		{
+			@ :tmp = read($fd);
+	     		if (eof($fd) != [1])
+			{
+				@ :chan = word(0 $split(, $tmp));
+				@ :uh = word(1 $split(, $tmp));
+				@ setitem(AUTOOP.LIST $numitems(AUTOOP.LIST) $chan $uh);
+			};
+		};
+		@ :num = numitems(AUTOOP.LIST);
+		if (close($fd) == [-1]) { xecho -b Error: Unable to close file descriptor.; return; };
+		if (num > -1) { xecho -b -say Notice: Successfully Loaded [$num] Users.; };
+	};
+};
+
+alias autoop.queue_add (nick, chan)
+{
+	if (nick)
+	{
+		if (chan)
+		{
+			@ setitem(AUTOOP.QUEUE $numitems(AUTOOP.QUEUE) $nick $chan);
+			timer $CONFIG[AUTOOP_DELAY] autoop.queue_op;
+		} else {
+			xecho -b Error: autoop.queue_add: No Channel Supplied.;
+		};
+	} else {
+		xecho -b Error: autoop.queue_add: No Nick Supplied.;
+	};
+};
+
+alias autoop.queue_list (void)
+{
+	if (numitems(AUTOOP.QUEUE) > 0)
+	{
+		for II in ($numitems(AUTOOP.QUEUE))
+		{
+			@ :nick = word(0 $getitem(AUTOOP.QUEUE $II));
+			@ :chan = word(1 $getitem(AUTOOP.QUEUE $II));
+			xecho -b Notice: \[ $[15]chan \] \[ $[30]nick \];
+		};
+	} else { xecho -b Notice: AutoOp Queue Is Empty.; };
+};
+
+alias autoop.queue_op (void)
+{
+	# grab info from array.
+	@ :nick = word(0 $getitem(AUTOOP.QUEUE 0));
+	@ :chan = word(1 $getitem(AUTOOP.QUEUE 0));
+	
+	if (ischanop($servernick() $chan))
+	{
+		if (!ischanop($nick $chan))
+		{
+			xecho -b Notice: Auto-Oping $nick on $chan\.;
+			if (!ischanop($nick $chan)) { mode $chan +o $nick; };
+		};
+	};
+
+	# nuke entry after its been processed.
+	@ delitem(AUTOOP.QUEUE 0);
+};
+
+alias autoop.reop_user (void)
+{
+	for II in ($mychannels())
+	{
+		autoop.find_ops $II;
+	};
+};
+
+alias autoop.save_userfile (void)
+{
+	@ :num = numitems(AUTOOP.LIST);
+	@ :reps = 0;
+
+	if (fexist($DS.USER_DIR/$CONFIG.AUTOOP_FILE)) 
+	{ 
+	  @ :ul = unlink($DS.USER_DIR/$CONFIG.AUTOOP_FILE);
+	};
+
+	@ :fd = open($DS.USER_DIR/$CONFIG.AUTOOP_FILE W);
+
+	while ( reps < num )
+	{
+		@ :chan = word(0 $igetitem(AUTOOP.LIST $reps));
+		@ :uh = restw(1 $igetitem(AUTOOP.LIST $reps));
+		@ reps++;
+		@ :wr = write($fd $chan,$uh);
+		if (CONFIG[AUTOOP_DEBUG]) { xecho -b -say Notice: Saved: \[ $[15]chan \] \[ $[30]uh \]; };
+	};
+	if (close($fd) == [-1]) { xecho -b Error: Unable to close file descriptor.; return; };
+	if (num > -1) { xecho -b -say Notice: Successfully Loaded [$num] Users.; };
+};
+
+alias autoop.usage (void)
+{
+	xecho -say -b Usage: /AUTOOP [<-ADD|-DEL> <NICK|*USER@*.HOST.COM> <#CHAN1,#CHAN2|*>|<-LIST|-LOAD|-REOP|-SAVE>];
+};
+
+# functions.
+alias autoop.match_user (nick, chan, void)
+{
+	if (rmatchitem(AUTOOP.LIST $chan $nick) > -1) {
+		return 1;
+	} else {
+		return 0;
+	};
+};
+
+# on hooks.
+on #-ctcp 721 '% % \\\\[OP OPS\\\\] *'
+{
+	if (CONFIG[AUTOOP])
+	{
+		@ :nick = [$0];
+		@ :chan = [$3];
+		if (autoop.match_user($userhost($nick) $chan))
+		{
+			if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: CTCP OP: $nick IS on aoplist.; };
+			if (ischanop($servernick() $chan))
+			{
+				if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: CTCP OP: $servernick() IS an op.; };
+				if (!ischanop($nick $chan))
+				{
+					if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: CTCP OP: $nick IS NOT an op.; };
+					autoop.queue_op $nick $chan;
+				};
+			};
+		};
+	};
+};
+
+on #-join 721 "*"
+{
+	if (CONFIG[AUTOOP])
+	{
+		if (CONFIG[AUTOOP_TIMER])
+		{
+			@ :nick = [$0];
+			@ :chan = [$1];
+			if (autoop.match_user($userhost($nick) $chan))
+			{
+				if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: JOIN: $nick IS on aoplist.; };
+
+				# add $nick/$chan to op queue
+				autoop.queue_add $nick $chan;
+			};
+		};
+	};
+};
+
+on #-mode_stripped 721 "% % % *"
+{
+	if (CONFIG[AUTOOP])
+	{
+		# if we are being affected by mode change.
+		if ([$3] == [$servernick()])
+		{
+			if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: ON MODE_STRIPPED: $servernick() is being affected by mode change.; };
+			# and we got opped.
+ 			if ([$2] == [+o])
+			{
+				if (CONFIG[AUTOOP_DEBUG]) { xecho -b Notice: ON MODE_STRIPPED: $servernick() is being opped.; };
+				# Locate users in this channel that should be opped.
+				defer autoop.find_ops $1;
+			};
+		};
+	};
+};
+
+# autoload userfile.
+autoop.load_userfile;

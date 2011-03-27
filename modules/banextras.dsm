@@ -1,0 +1,58 @@
+# version:0.2 loader:pf
+#
+# banextras.dsm - Adds extra kick-ban aliases.
+# Copyright (c) 2004 Brian Weiss
+# See the 'COPYRIGHT' file for more information.
+#
+# This script uses serial number 452 for all /ON hooks.
+#
+
+queue cleanup.banextras
+{
+	for ii from 0 to 13
+	{
+		^alias -bk$ii;
+		^alias -kb$ii;
+		^alias -ban$ii;
+	};
+
+	^on #hook 452 -"UNLOADMOD channel";
+};
+
+if (!isloaded(channel))
+{
+	^local ask $'The banextras module depends on the channel module - Load it now? ';
+	if (ask == [y])
+		loadmod channel;
+};
+
+#
+# This is a hack, but it works *grin*
+#
+for ii from 0 to 13
+{
+	for foo in (bk kb)
+	{
+		^alias $foo$ii (target, reason default "$CONFIG.DEFAULT_KICK_REASON")
+		\{
+			@ :oldtype = CONFIG.BANTYPE\;
+			^dset BANTYPE $ii\;
+			$foo \$target \$reason\;
+			^dset BANTYPE \$oldtype
+		\};
+	};
+
+	^alias ban$ii (...)
+	\{
+		@ :oldtype = CONFIG.BANTYPE\;
+		^dset BANTYPE $ii\;
+		ban \$*\;
+		^dset BANTYPE \$oldtype
+	\};
+};
+
+on #-hook 452 "UNLOADMOD channel"
+{
+	xecho -b WARNING: The banextras module depends on the channel module - Unloading it may prevent banextras from functioning properly;
+};
+

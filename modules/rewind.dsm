@@ -1,0 +1,84 @@
+# version:3.2 loader:pf
+# $Id: rewind.dsm,v 1.30 2005/02/13 00:12:27 achemze Exp $
+#
+#
+# rewind.dsm - this does *something* for DarkStar/Epic4
+#
+# Written by Joshua Hamor
+# Copyright (c) 2002-2003 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script is intended to do *stuff* to darkstar.
+# Serial 350
+#
+
+queue cleanup.rewind {
+	for II in (4op back d mreop quit sv sv.rmsg update v w ws wp wn) { 
+	  ^alias -$II;
+	};
+	stack pop alias sv;
+	stack pop set CLIENT_INFORMATION;
+};
+
+# Force the loading of saved settings. 
+module.load_saved_settings;
+
+# set version info. 
+@ rewind.ver = [rewind\(c3.2\)];
+
+# store original sv & client_information. 
+stack push alias sv;
+stack push set CLIENT_INFORMATION;
+
+
+# aliases. 
+alias 4op (nick, void) if (nick) { mode $C +oooo $nick $nick $nick $nick; } else { xecho -b -- Usage: /4OP <nick>; };
+alias back away; 
+alias d describe $*;
+alias frelm
+{
+  if ([$*])
+  {
+    @ :nick = [$0];
+    @ :msg = [$1-];
+    if (userhost($nick) != [<UNKNOWN>@<UNKNOWN>])
+    {
+      @ :uh = userhost($nick);
+      # show the msg in our current theme. brian rocks me. -hmz 
+      say $stripc($fparse(MSG $nick $uh $msg));
+    } else { xecho -b -- \[$rewind.ver\] couldnt steal $nick\'s userhost.; };
+  } else { xecho -b -- Usage: /FRELM <nick> <msg>; };
+};
+alias mreop (chan default "$C", void) { massmode $chan + o $chops($chan); };
+alias nw { window new hide double on; };
+alias p { ping $*; };
+alias ping (target default "$C", void) { //ping $target; };
+alias play { readlog; };
+alias quit (reason default "DO YOU GF?") { //quit $rewind.ver $reason $rewind.ver; };
+alias sv (target default "$C", void) { msg $target \[$rewind.ver+darkstar\($DS.VERSION\)\] $J\($uname()\) puffcake!; }
+alias update { 
+  if ([$*]) {
+    @ :args = tolower($*);
+    if (args == [darkstar]) {
+      @ :cvs = exec (cd darkstar; cvs up -dPA .);
+      reload;
+      xecho -b -- \[$rewind[ver]\] Darkstar update complete.;
+    };
+    if (args == [rewind]) {
+      @ :cvs = exec (cd ~/rewind; cvs up -dPA  .);
+      reloadmod rewind;
+      xecho -b -- \[$rewind[ver]\] Rewind update complete.;
+    };
+  } else { ^update rewind; };
+};
+alias v voice $*;
+alias w (target default "$C", void) who $target;
+alias ws swap $*;
+
+# set client_information/version. 
+eval set CLIENT_INFORMATION \[$rewind.ver+darkstar\($DS.VERSION\)\];
+
+# display rewind ansi 
+eval less $DS.USER_DIR/rewind.ans;
+
+# EOF 

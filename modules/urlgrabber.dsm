@@ -1,0 +1,145 @@
+# version:2.6 loader:pf
+#
+# urlgrabber.dsm - Urlgrabber module for Darkstar/EPIC4.
+#
+# Written by Joshua Hamor
+# Copyright (c) 2002 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script functions as a urlgrabber for Darkstar. 
+# Using serial #356
+#
+# .,:([TODO]):,.
+# --------------
+# o support seperate logs based on protocol (ftp/http.log)
+# o support logging for other (*://*)
+#
+
+# Configuration 
+addconfig URL_CHANS *;
+addconfig URL_FILE url.log;
+addconfig -b URL_VERBOSE 1;
+
+queue cleanup.urlgrabber {
+	^on raw_irc 356 -'% % *://*';
+	^on #topic 356 -"* *";
+	^on #332 356 -"* *";
+	^alias -urlgrabber;
+};
+
+# Snag all topic on-join for processing 
+on #-332 356 "% % *\\[\:\/\/\\]*"
+{
+	# $2 = args | $1 = user 
+	^urlgrabber.write $1 $pattern(*://* $2-);
+};
+
+# Snag all topic changes for processing 
+on #-topic 356 "% % *\\[\:\/\/\\]*" {
+	# $2- = args | $3 = user 
+	^urlgrabber.write $userhost($3) $pattern(*://* $2-);
+};
+
+# Snag all topic changes for processing 
+on #-raw_irc 356 '% % *://*' {
+	@ :url = pattern(*://* $sar(/://$2-));
+	@ :usr = tolower($0);
+	# 
+	if (CONFIG[URL_CHANS] == [*])
+	{
+		^urlgrabber.write $usr $url;
+	} else {
+		for ii in (CONFIG[URL_CHANS])
+		{
+			if (iscurchan($ii))
+			{
+				^urlgrabber.write $usr $url;
+			};
+		};
+	};
+};
+
+alias urlgrabber
+{
+	switch ($tolower($word(0 $0)))
+	{
+	       (-erase) { urlgrabber.erase; }
+		(-show) { urlgrabber.show $1; }
+		    (*) { xecho -b -- Usage: /URLGRABBER <-erase|-show [n]>; }
+	};
+};
+
+alias urlgrabber.erase (void)
+{
+	@ :ul = unlink($DS.USER_DIR/$CONFIG.URL_FILE);
+	if (ul < [1]) { xecho -b -- [URL] Removed logfile \[$DS.USER_DIR/$CONFIG.URL_FILE\]; };
+
+        @ :fd = open($DS.USER_DIR/$CONFIG.URL_FILE W);
+	if (fd)
+	{
+          @ :tmp = [# urlgrabber.dsm - url log file - $strftime(%m%d%y/%H%m.%s)];
+          @ write($fd $tmp);
+          @ write($fd #);
+          @ close($fd);
+	  if (CONFIG[URL_VERBOSE] == [1]) { xecho -b -- [URL] Created logfile \[$DS.USER_DIR/$CONFIG.URL_FILE\]; };
+	} else {
+          xecho -b -- [URL] Error: unable to write to log.;
+	};
+};
+alias urlgrabber.show (entries, void)
+{
+   if (fexist($DS.USER_DIR/$CONFIG.URL_FILE) == [1])
+   {
+     if (entries)
+     {
+	   @ :curen = [1];
+	   @ :fd = open($DS.USER_DIR/$CONFIG.URL_FILE R);
+	   while ( entries > 0 )
+           {
+	     if (eof($fd) == [0])
+             {
+	       	@ :tmp = read($fd);
+	       	if (pattern(#* $tmp)) { continue; };
+	       	if (eof($fd) != [1]) { xecho -b -- $[5]curen $tmp; } else { return; };
+	       	@ curen++;
+	       	@ entries--;
+	     };
+           };
+	   @ curen--;
+	   xecho -b -- [URL] displaying $curen entries from [$DS.USER_DIR/$CONFIG.URL_FILE];
+     } else { less $DS.USER_DIR/$CONFIG.URL_FILE; };
+   } else { xecho -b -- Logfile [$DS.USER_DIR/$CONFIG.URL_FILE] does not exist; };
+};
+
+alias urlgrabber.write (user, url, void)
+{
+   if (user)
+   {
+     if (url)
+     {
+       @ :fd = open($DS.USER_DIR/$CONFIG.URL_FILE W);
+       if (fd)
+       {
+         @ :curtime = strftime(%m%d%y/%H%m.%s);
+         @ :wrte = [$curtime:$user:$url];
+         @ write($fd $wrte);
+         @ close($fd);
+         if (CONFIG[URL_VERBOSE] == [1]) { xecho -b -- [$url] snagged from [$user]; };
+       } else {
+         xecho -b -- [URL] Error: unable to write to logfile.;
+	 return;
+       };
+     } else {
+       xecho -b -- [URL] Error: no url supplied.;
+     };
+   } else {
+     xecho -b -- [URL] Error: no user/server supplied.;
+   };
+};
+
+assign MODINFO.URLGRABBER.INFO Chans: $CONFIG.URL_CHANS | Log: $CONFIG.URL_FILE
+
+# create url file, if none existant. 
+if (fexist($DS.USER_DIR/$CONFIG.URL_FILE) != 1) { urlgrabber.erase; };
+ 
+# EOF 

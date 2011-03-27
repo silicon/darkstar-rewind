@@ -1,0 +1,93 @@
+# $Id: FEATURES,v 1.11 2005/12/15 05:02:29 achemze Exp $
+
+C3.3(12/14/2005):
+	- added banextras
+	- added cloak
+	- fixed CTCP OP.
+
+C3.2(02/14/2005):
+        - updated installer to support keymon.
+        - added autoop module v1.3.4.
+        - added saved settings support to:
+                * dict
+                * keymon
+                * rewind
+        - fixed fake relm.
+        - rewrote smoove to support pf.
+        - fixed wordkick to support pf.
+                * mainly rewriting a bunch of comments and finding the missing semi-colons.
+                * also added warning message to notify user of why we're not kicking ops.
+        - added splitmon_verbose.
+        - fixed up XDCC:
+                * decommisioned XDCC_PATH.
+                * rewrote syntax help.
+                * wrote xdcc.send_packages.
+
+C3.1(01/04/2004):
+        - added keymon module.
+        - converted to new darkstar3 format:
+                * dict
+                * rewind
+                * smoove
+                * splitmon
+                * urlgrabber
+                * wordkick
+                * xdcc
+        - removed massinv. (Felt no need for this sort of abusive nonsense.)
+        - fixed bugs in splitmon. Also tried to find bug reported by Drogoh. still
+                awaiting further testing.
+        - fixed a ton of bugs in xdcc:
+                * changed default CONFIG[XDCC] to 0.
+                * added CONFIG[VERBOSE]. Shows more detailed information about xdcc operations.
+                * cleaned up syntax of usage.
+                * fixed channel checking (CONFIG[XDCC_CHANS]).
+
+B2.3(10/11/2003):
+	- added splitmon module. This is to monitor netsplit information. see ^G.
+	- touched up a bunch of code for a cleaner display. Little optimization as well.
+	- fixed quit bug.
+	- updated update alias.
+	- fixed a bunch of stuff in xdcc.
+		* added CONFIG[XDCC_PLIST].
+		* added slots.
+		* added queue.
+		* added CONFIG[XDCC_BANNER].
+		* added xdcc.init_arrays, xdcc.clear_arrays.
+		* added xdcc.ptimer_clear, xdcc.ptimer_set, xdcc.ptimer_show.
+		* added xdcc.queue_add, xdcc.queue_del.
+		* added xdcc.send_file.
+
+B2.2(09/03/2003):
+        - added wordkick module. This is there for those pesky kids asking annoying questions.
+        - touched up faceted theme. Thanks to void again for inspiring me to create this.
+        - fixed a bunch of bugs in urlgrabber.
+	  * fixed creation process of log file.
+	  * removed a bunch of redundant code.
+	  * fixed hang bug in urlgrabber.show()
+	  * rewrote error logs to make more user sense.
+	  * changed logfile format. Makes a bit easier to parse into sql now.
+          * cleaned up a bunch of code.
+
+B2.1(09/03/2003):
+        - added faceted theme. Thanks to void for inspiring me to create this.
+	- updated documentation.
+        - added 4op.
+
+B2.0(08/19/2003):
+	- xdcc. fixed up a ton of bugs, rewrote some code, and finished ptimer.
+	- documentation. updated a few documents to show correct info here and there.
+
+B2(08/19/2003):
+	- xdcc module (first beta/working version)
+
+A1(06/07/2002):
+	- rewind theme
+	- gothik theme
+	- dictionary module - v0.1.4
+	- urlgrabber module - v0.1.4
+	- rewind module - v0.1.2
+	   * frelm (fake relay message)
+	   * mass-invite (mass invite from current chan to #chan)
+	   * mass-reop (mass op every curop in curchan)
+	   * rhelp (help with my stuff, fear fudd)
+	   * update (update via cvs both darkstar and rewind)

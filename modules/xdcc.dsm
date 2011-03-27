@@ -1,0 +1,518 @@
+# version:2.20 loader:pf
+# $Id: xdcc.dsm,v 1.58 2004/01/03 04:33:59 achemze Exp $
+#
+# xdcc.dsm - XDCC module for DarkStar/EPIC4
+# -----------------------------------------
+#
+# Written by Joshua Hamor & Brian Weiss
+# Copyright (c) 2002 Joshua Hamor & Brian Weiss
+# See the 'COPYRIGHT' file for more information.
+#
+# This script uses serial number 429 for all /on hooks.
+# -----------------------------------------------------
+#
+
+queue cleanup.xdcc
+{
+	^on #ctcp 429 -"% % \\\\\[CDCC XDCC\\\\\] *";
+	^on #msg 429 -"% \\\\\[CDCC XDCC\\\\\] *";
+	^on #dcc_lost 429 -'*';
+	^xdcc.ptimer_clear;
+	^xdcc.clear_arrays;
+	^alias -xdcc;
+};
+
+# Configuration 
+addconfig -b XDCC 0;
+addconfig XDCC_BANNER XDCC;
+addconfig XDCC_CHANS *;
+addconfig -b XDCC_DEBUG 0;
+addconfig XDCC_FILE xdcc.sav;
+addconfig -b XDCC_PLIST 0;
+addconfig XDCC_QUEUE 10;
+addconfig XDCC_SLOTS 10;
+addconfig XDCC_TIME 600;
+addconfig -b XDCC_VERBOSE 1;
+
+# Hook incoming CTCP/MSG XDCC requests.  
+on #-ctcp 429 '% % \\\\[CDCC XDCC\\\\] *'
+{
+	if (CONFIG[XDCC])
+	{
+		xdcc.remote_command $0 $3-;
+	} else {
+		if (CONFIG[XDCC_VERBOSE])
+		{
+			xecho -b $CONFIG[XDCC_BANNER]: Warning: XDCC is currently OFF;
+		};
+	};
+};
+
+# * Hook closing DCC/XDCC requests.  
+on #-dcc_lost 429 '*'
+{
+	@ :item = matchitem(xdcc.slots $0*);
+	if (item != [-1])
+	{
+		@ :del = delitem(xdcc.slots $item);
+
+		if (del != [-2] && numitems(xdcc.queue) > 1)
+		{
+			# find first queue user and start transfer. 
+			@ :item = getitem(xdcc.queue 1);
+			@ :nick = word(0 $item);
+			@ :pack = word(1 $item);
+
+			@ delitem(xdcc.queue 1);
+	
+			if (nick && pack)
+			{
+				xdcc.send_file $nick $pack;
+			};
+		} else {
+			if (CONFIG[XDCC_VERBOSE])
+			{
+				 xecho -b -say $CONFIG[XDCC_BANNER]: Warning: on dcc_lost: connection not in slots array.;
+			};
+		};
+	};
+};
+on #-msg 429 '% \\\\[CDCC XDCC\\\\] *'
+{
+	if (CONFIG[XDCC]) {
+		xdcc.remote_command $0 $2-;
+	} else {
+		if (CONFIG[XDCC_VERBOSE])
+		{
+			xecho -b $CONFIG[XDCC_BANNER]: Warning: XDCC is currently OFF;
+		};
+	};
+};
+
+# Begin Aliases 
+alias xdcc (...)
+{
+	if ([$0]) 
+        {
+		switch ($tolower($0))
+		{
+			(add)    { xdcc.add_package $1; }
+			(change) { xdcc.change_package $1; }
+			(list)   { xdcc.list_packages; }
+			(load)   { xdcc.load_packages; }
+			(ptimer) { xdcc.ptimer; }
+			(remove) { xdcc.remove_package $1; }
+			(save)   { xdcc.save_packages; }
+			(send)   { xdcc.send_package $1 $2; }
+			(show)   { xdcc.show_offers $1; }
+		};
+	} else {
+		xecho -b $CONFIG[XDCC_BANNER]: Usage:;
+		xecho -b $CONFIG[XDCC_BANNER]:	 /XDCC <ADD|CHANGE|REMOVE> [pack #];
+		xecho -b $CONFIG[XDCC_BANNER]:	 /XDCC <LIST|LOAD|PTIMER|SAVE>;
+	};
+};
+
+alias xdcc.add_package (file, void)
+{
+	if (!file)
+	{
+		# Prompt user for the filename of the package. Required. 
+		^local file $"Enter a filename: ";
+	};
+	@ :file = twiddle($file);
+
+	if (fexist($file) == -1)
+	{
+		xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.add_package: No such file or directory;
+		return;
+	};
+
+	# Prompt user for a description. This is optional. 
+	^local desc $"Enter a description for this package: ";
+
+	@ setitem(xdcc.packages $numitems(xdcc.packages) $file $desc);
+	@ setitem(xdcc.requests $numitems(xdcc.requests) 0);
+	xecho -b -say $CONFIG[XDCC_BANNER]: Notice: Package [$numitems(xdcc.packages)] added succesfully;
+};
+
+alias xdcc.change_package (pack, void)
+{
+	if (!pack) {
+		^local pack $"Which package description do you want to change? ";
+		if (pack == []) { return; };
+	};
+
+	if (pack > 0 && pack <= numitems(xdcc.packages))
+	{
+		^local desc $"New description for package $pack: ";
+		if (desc == []) { return; };
+		@ :item = pack - 1;
+		@ :file = word(0 $getitem(xdcc.packages $item));
+		@ setitem(xdcc.packages $item $file $desc);
+		xecho -b $CONFIG[XDCC_BANNER]: Notice: Description for package $pack changed to "$desc";
+	} else {
+		xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.change_package: Package not found [$pack];
+	};
+};
+
+alias xdcc.clear_arrays (void)
+{
+	for II in (xdcc.packages xdcc.queue xdcc.requests xdcc.slots)
+	{
+		@ delarray($II);
+
+		if (CONFIG[XDCC_VERBOSE])
+		{
+			xecho -b -say $CONFIG[XDCC_BANNER]: Notice: deleted array $II;
+		};
+	};
+};
+
+alias xdcc.init_arrays (void)
+{
+	# nuke arrays 
+	xdcc.clear_arrays;
+
+	# set default array vars 
+	for II in (xdcc.queue xdcc.slots)
+	{
+		@ setitem($II 0 % %);
+
+		if (CONFIG[XDCC_VERBOSE])
+		{
+			xecho -b -say $CONFIG[XDCC_BANNER]: Notice: set arrays;
+		};
+	};
+};
+
+alias xdcc.list_packages (void)
+{
+	# collect number of items and change to 'real' numbers 
+	@ :num = numitems(xdcc.packages);
+	@ :reps = 0;
+
+	if (numitems(xdcc.packages) > -1)
+	{ 
+		while (numitems(xdcc.packages) > reps)
+		{
+			# grab pack info 
+			@ :file = word(0 $getitem(xdcc.packages $reps));
+			@ :file_t = split(/ $file);
+			@ :file_c = count(" " $file_t) - 1;
+			@ :file_s = word($file_c $file_t);
+			
+			@ :desc = restw(1 $getitem(xdcc.packages $reps));
+			@ :reqs = getitem(xdcc.requests $reps) ## [x];
+
+			# decrement/increment proper variables 
+			@ reps++;
+
+			# print information 
+			xecho -b $CONFIG[XDCC_BANNER]: Notice: #$[2]reps $[5]reqs $[8]fmtfsize($fsize($file)) $[20]file_s $desc;
+		};
+		xecho -b -say $CONFIG[XDCC_BANNER]: Notice: Listing complete.;
+	} else {
+		xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.list_packages: Packages not found;
+	};
+};
+
+alias xdcc.load_packages (void)
+{
+	# if arrays exists, delete and reset them. 
+	if (numitems(xdcc.packages) || numitems(xdcc.requests)) { ^xdcc.init_arrays; };
+
+	if (fexist($DS.USER_DIR/$CONFIG.XDCC_FILE))
+	{
+		@ :fd = open($DS.USER_DIR/$CONFIG.XDCC_FILE R);
+		while (!eof($fd))
+		{
+			@ :tmp = read($fd);
+	     		if (eof($fd) != [1])
+			{
+				@ setitem(xdcc.requests $numitems(xdcc.requests) $word(1 $split(: $tmp)));
+				@ setitem(xdcc.packages $numitems(xdcc.packages) $word(2 $split(: $tmp)) $restw(3 $split(: $tmp)));
+			};
+		};
+
+		@ CONFIG[XDCC_PLIST] = 0;
+
+		xecho -b -say $CONFIG[XDCC_BANNER]: Notice: Loaded [$numitems(xdcc.packages)] packages.;
+	};
+};
+
+# do all the ptimer related nonsense 
+alias xdcc.ptimer (void)
+{
+	if (CONFIG[XDCC_PLIST])
+	{
+		xdcc.ptimer_clear;
+	} else {
+		^local ptime $"Enter time in minutes to show offers: ";
+			if (ptime == []) { return; };
+
+		@ CONFIG[XDCC_TIME] = ptime * 60;
+		@ CONFIG[XDCC_PLIST] = 1;
+		^save;
+
+		xdcc.ptimer_show $CONFIG.XDCC_CHANS;
+
+		xecho -say -b $CONFIG[XDCC_BANNER]: Notice: ptimer toggled ON;
+	};
+};
+
+alias xdcc.ptimer_clear (void)
+{
+	@ CONFIG[XDCC_PLIST] = 0;
+	^save;
+
+	^timer -d 429;
+
+	xecho -say -b $CONFIG[XDCC_BANNER]: Notice: ptimer toggled OFF;
+};
+
+alias xdcc.ptimer_set (void)
+{
+	if (CONFIG[XDCC_PLIST])
+	{
+		timer -refnum 429 $CONFIG.XDCC_TIME xdcc.ptimer_show $CONFIG.XDCC_CHANS;
+	};
+};
+
+alias xdcc.ptimer_show (chan, void)
+{
+	if (chan)
+	{
+		if (numitems(xdcc.packages) > 0)
+		{
+			if (CONFIG[XDCC_PLIST])
+			{
+				# reset timer for offer show. 
+				xdcc.ptimer_set;
+
+				# show offers to xdcc chans. 
+				xdcc.show_offers $CONFIG.XDCC_CHANS;
+			} else {
+				xdcc.ptimer_clear;
+			};
+		} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.ptimer_show: Packages not found; };
+	} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.ptimer_show: No channel supplied; };
+};
+
+alias xdcc.queue_add (nick, pack, void)
+{
+	if (nick)
+	{
+		if (pack)
+		{
+			@ :num = numitems(xdcc.queue) - 1;
+			if (num < CONFIG[XDCC_QUEUE])
+			{
+				@ setitem(xdcc.queue $numitems(xdcc.queue) $nick $pack);
+
+				xecho -b -say $CONFIG[XDCC_BANNER]: Notice: xdcc.queue_add: User $nick added to queue \[$num/$CONFIG.XDCC_QUEUE\];
+				^msg $nick You've been added to queue \[$num/$CONFIG.XDCC_QUEUE\];
+			} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_add: queue is full; };
+		} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_add: No package supplied; };
+	} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_add: No nick supplied; };
+};
+
+alias xdcc.queue_del (nick, pack, void)
+{
+	if (nick)
+	{
+		if (pack)
+		{
+			@ :item = matchitem(xdcc.queue $nick $pack);
+			@ :del = delitem($item);
+			if (del == [-2])
+			{ 
+				xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_del: Unable to find user in queue.;
+			};
+			if (del == [-1])
+			{
+				xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_del: Unable to locate queue.;
+			};
+			if (del == [0])
+			{
+				xecho -b -say $CONFIG[XDCC_BANNER]: Notice: xdcc.queue_del: User $nick deleted from queue.;
+			};
+		} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_del: No package supplied; };
+	} else { xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.queue_del: No nick supplied; };
+};
+
+alias xdcc.remote_command (nick, cmd, pack, void)
+{
+	# loop through all current channels
+	fe ($split(, $CONFIG[XDCC_CHANS])) chan
+	{
+		# if nick is on channel, or chanel = *
+		if (onchannel($nick $chan) || chan == [*])
+		{
+			# see what the user requested.
+			switch ($tolower($word(0 $cmd)))
+			{
+				# serve it up.
+				(list) { xdcc.show_offers $nick; }
+				(send) { xdcc.send_package $nick $pack; }
+			};
+		};
+	};
+};
+
+alias xdcc.remove_package (pack, void)
+{
+	if (!pack) { ^local pack $"Enter a pack: "; };
+		@ :pck = strip(# $pack)-1;
+		if (getitem(xdcc.packages $pck))
+		{
+			@ :del = delitem(xdcc.packages $pck);
+			@ :del = delitem(xdcc.requests $pck);
+			if (del == [0])
+			{
+				xecho -b -say $CONFIG[XDCC_BANNER]: Notice: Removed pack $pack;
+			} else {
+				xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.remove_package: Array/Item doesnt exist;
+			};
+		} else {
+			xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.remove_package: Invalid package;
+		};
+	^xdcc.save_packages;
+};
+
+alias xdcc.save_packages (void)
+{
+	@ :num = numitems(xdcc.packages);
+	@ :numa = 1;
+	@ :reps = 0;
+	if (num > -1)
+	{
+		if (fexist($DS.USER_DIR/$CONFIG.XDCC_FILE))
+			@ :ul = unlink($DS.USER_DIR/$CONFIG.XDCC_FILE);
+
+		@ :fd = open($DS.USER_DIR/$CONFIG.XDCC_FILE W);
+
+		while ( num > -1 )
+		{
+			if (reps <= num)
+			{
+				@ :file = word(0 $getitem(xdcc.packages $reps));
+				@ :desc = restw(1 $getitem(xdcc.packages $reps));
+				@ :reqs = getitem(xdcc.requests $reps);
+				@ :wr = write($fd $numa:$reqs:$file:$desc);
+				@ reps++;
+			};
+			@ numa++;
+			@ num--;
+		};
+		@ close($fd);
+		xecho -say -b $CONFIG[XDCC_BANNER]: Notice: Saving complete.;
+	} else {
+		xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.save_packages: Packages not found;
+	};
+};
+
+alias xdcc.send_package (nick, pack, void)
+{
+	if (numitems(xdcc.slots) - 1 <= CONFIG[XDCC_SLOTS])
+	{
+		xdcc.send_file $nick $pack;
+	} else {
+		xecho -b -say $CONFIG[XDCC_BANNER]: Notice: xdcc.send_package: All slots full.;
+		^msg $nick All slots full.;
+		xdcc.queue_add $nick $pack;
+	};
+
+	@ :reps = numitems(xdcc.slots);
+
+	while ( reps > 0 )
+	{
+		@ :myNick = word(0 $getitem(xdcc.slots $reps));
+		@ :myPack = word(1 $getitem(xdcc.slots $reps));
+		if (myNick == nick)
+		{ 
+			^msg $nick Sending you $myPack;
+			return;
+		};
+		@ reps--;
+	};
+};
+
+alias xdcc.send_file (nick, pack, void)
+{
+	# strip # from user input. 
+	@ :pck = strip(# $pack)-1;
+	@ :file = word(0 $getitem(xdcc.packages $pck));
+
+	@ setitem(xdcc.slots $numitems(xdcc.slots) $nick $pack);
+	timer 0 dcc send $nick $file;
+	
+	# file request info. 
+	@ :reqs = getitem(xdcc.requests $pck);
+	@ reqs++;
+	@ setitem(xdcc.requests $pck $reqs);
+	^xdcc.save_packages;
+};
+
+alias xdcc.show_offers (nick, void)
+{
+	if (nick)
+	{
+		if (numitems(xdcc.packages) > -1) 
+		{
+			# initialize variables 
+			@ :getsize = 0;
+			@ :num = numitems(xdcc.packages);
+			@ :reps = 0;
+			@ :size = 0;
+			@ :s_avail = CONFIG[XDCC_SLOTS];
+			@ :s_used = numitems(xdcc.slots) - 1;
+			@ :s_free = s_avail - s_used;
+
+			# display header 
+			if (num < 2)
+			{
+				^msg $nick ** $num pack ** $s_free of $s_avail slots open.;
+			} else {
+				^msg $nick ** $num packs ** $s_free of $s_avail slots open.;
+			};
+			^msg $nick ** To request a file type: "/msg $N xdcc send #x" **;
+		
+			while (numitems(xdcc.packages) > reps)
+			{
+				# Pack Information 
+				@ :file = word(0 $getitem(xdcc.packages $reps));
+				@ :desc = restw(1 $getitem(xdcc.packages $reps));
+				@ :reqs = getitem(xdcc.requests $reps) ## [x];
+	
+				# calculcate and set sizing info 
+				@ :filesize = fsize($file);
+				@ :getsize += reqs * filesize;
+				@ :size += $size + fsize($file);
+	
+				# increment/decrement 
+				@ reps++;
+
+				# display pack 
+				^msg $nick #$[2]reps $[5]reqs [ $[7]fmtfsize($filesize)] $desc;
+			};
+
+			# calculate total size 
+			@ :size = fmtfsize($size);
+			@ :getsize = fmtfsize($getsize);
+
+			# display total size 
+			^msg $nick Total Offered: $size  Total Transfered: $getsize;
+		} else {
+			xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.show_offers: Packages not found;
+		};
+	} else {
+		xecho -b $CONFIG[XDCC_BANNER]: Error: xdcc.show_offers: No Nick/Channel supplied.;
+	};
+};
+
+# initialize arrays 
+xdcc.init_arrays;
+
+if (fexist($DS.USER_DIR/$CONFIG.XDCC_FILE)) { ^xdcc.load_packages; } else { ^xdcc.save_packages; };
+# EOF 

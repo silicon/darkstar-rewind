@@ -1,0 +1,273 @@
+# version:2.6.2 loader:pf
+# $Id: keymon.dsm,v 1.9 2004/01/06 16:25:56 achemze Exp $ 
+#
+# keymon.dsm - Key Monitor module for DarkStar/EPIC4
+# -----------------------------------------
+#
+# Written by Joshua Hamor
+# Copyright (c) 2003 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script uses serial number 720 for all /on hooks.
+# -----------------------------------------------------
+#
+# TODO:
+#
+# - Auto add keys from /join.
+
+queue cleanup.keymon
+{
+	# replace stock /join 
+	stack pop alias join;
+
+	# remove arrays 
+	for II in (KEYMON_KEYS)
+	{
+		@ delarray($II);
+	};
+
+	# remove aliases 
+	^alias -keymon;
+};
+
+# Configuration 
+addconfig KEYMON_FILE keymon.keys;
+addconfig -b KEYMON_AUTO_ADD 1;
+addconfig -b KEYMON_VERBOSE 1;
+
+# Force the loading of saved settings 
+module.load_saved_settings;
+
+# store original join 
+stack push alias join;
+
+# overwrite join 
+alias join (...)
+{
+	switch ($*)
+	{
+		(*,*)
+		{
+			join $before(, $0) $1-;
+			join $after(, $0) $1-;
+		}
+		(#*) (&*) (0) (-*) (!*) (+*)
+ 		{ 
+			@ :chan = [$0];
+			@ :index = matchitem(KEYMON_KEYS *$chan *);
+
+			if (index > -1)
+			{
+				@ :key = word(1 $getitem(KEYMON_KEYS $index));
+
+				xecho -b Notice: Joining $chan with key $key;
+
+				//join $chan $key;
+			} else {
+				//join $*;
+			};
+		}
+		()
+			{ //join -i; }
+		(*)
+			{ //join #$*; }
+	};
+};
+
+alias keymon (...)
+{
+	if ([$0]) 
+        {
+		switch ($tolower($0))
+		{
+			(-add)       { keymon.add_key $1 $2; }
+			(-del)       { keymon.remove_key $1 $2; }
+			(-help)      { keymon.usage; }
+			(-list)      { keymon.list_keys; }
+			(-load)      { keymon.load_keys; }
+			(-save)      { keymon.save_keys; }
+		};
+	} else {
+		keymon.usage;
+	};
+};
+
+alias keymon.add_key (chan, key, void)
+{
+	if (chan != [] && key != [])
+	{
+		# insert chan/key into array. 
+		@ :err = setitem(KEYMON_KEYS $numitems(KEYMON_KEYS) $chan $key);
+
+		if (err < 0) { 
+			xecho -b keymon.add_key: Error: Unable to add key. ;
+		} else {
+			if (CONFIG[KEYMON_VERBOSE])
+				xecho -b keymon_add.key: Notice: [$chan] added with [$key].;
+		};
+	} else {
+		xecho -b -say Usage: /KEYMON -add <#channel> <key>;
+	};
+};
+
+alias keymon.list_keys (void)
+{
+	@ :num = numitems(KEYMON_KEYS);
+	@ :maxc = 0;
+	@ :maxk = 0;
+	@ :reps = 0;
+
+	if (num > 0)
+	{
+		for ii from 1 to $num
+		{
+			@ :arg = getitem(KEYMON_KEYS ${ii-1});
+
+			# channel size calculations
+			@ :tmpc = word(0, $arg);
+			@ :lenc = strlen($tmpc);
+			@ :maxc = lenc > maxc ? lenc : maxc;
+
+			# key size calculations
+			@ :tmpk = word(1, $arg);
+			@ :lenk = strlen($tmpk);
+			@ :maxk = lenk > maxk ? lenk : maxk;
+		};
+		while (reps < num)
+		{
+			@ :chan = word(0 $getitem(KEYMON_KEYS $reps));
+			@ :key = restw(1 $getitem(KEYMON_KEYS $reps));
+
+			if (CONFIG[KEYMON_VERBOSE])
+			{
+				xecho -b keymon.list_keys: Notice: [C: $[$maxc]chan] [K: $[$maxk]key];
+			};
+
+			@ reps++;
+		};
+	} else {
+		xecho -b keymon.list_keys: Error: Array not found.;
+	};
+};
+
+alias keymon.load_keys (void)
+{
+		if (fexist($DS.USER_DIR/$CONFIG.KEYMON_FILE))
+		{
+			@ :fd = open($DS.USER_DIR/$CONFIG.KEYMON_FILE R);
+
+			if (fd)
+			{
+				if (numitems(KEYMON_KEYS)) { @ delarray(KEYMON_KEYS) };
+
+				while (!eof($fd))
+				{
+					@ :reps = 1;
+					@ :tmp = read($fd);
+					@ :temp = split(: $tmp);
+
+					if (!eof($fd))
+					{
+						@ setitem(KEYMON_KEYS $numitems(KEYMON_KEYS) $word(0 $temp) $restw(1 $temp));
+	
+						@ reps++;
+					};
+				};
+				if (CONFIG[KEYMON_VERBOSE])
+					xecho -b -say keymon.load_keys: Notice: Loaded $reps keys;
+			} else {
+				xecho -b keymon.load_keys: Error: Unable to read $CONFIG[KEYMON_FILE];
+			};
+		} else {
+			xecho -b keymon.load_keys: Error: $CONFIG[KEYMON_FILE] not found;
+		};
+};
+
+alias keymon.remove_key (chan, void)
+{
+	if (chan != [])
+	{
+		# grab array index number
+		@ :index = matchitem(KEYMON_KEYS *$chan*);
+
+		# grab channel key.
+		@ :key = word(1 $getitem(KEYMON_KEYS $index));
+
+		# remove chan/key from array. 
+		@ :err = delitem(KEYMON_KEYS $index);
+
+		if (err != 0) { 
+			xecho -b keymon.remove_key: Error: Unable to remove key.;
+		} else {
+			if (CONFIG[KEYMON_VERBOSE])
+			{
+				if (key)
+				{
+					xecho -b keymon_remove.key: Notice: [$chan] removed with [$key].;
+				} else {
+					xecho -b keymon.remove.key: Notice: [$chan] removed.;
+				};
+			};
+		};
+	} else {
+		xecho -b -say Usage: /KEYMON -del <#channel>;
+	};
+};
+
+alias keymon.save_keys (void)
+{
+	@ :num = numitems(KEYMON_KEYS);
+
+	if (num > -1)
+	{
+		if (fexist($DS.USER_DIR/$CONFIG.KEYMON_FILE))
+		{
+			@ :ul = unlink($DS.USER_DIR/$CONFIG.KEYMON_FILE);
+		};
+
+		@ :fd = open($DS.USER_DIR/$CONFIG.KEYMON_FILE W);
+
+		if (fd)
+		{
+			@ :reps = 0;
+
+			while (num > reps)
+			{
+				# grab chan/key 
+				@ :tmp = getitem(KEYMON_KEYS $reps);
+
+				if (tmp)
+				{
+					# write entry. 
+					if (!write($fd $word(0 $tmp):$restw(1 $tmp)))
+					{
+						xecho -b keymon.save_keys: Error: Unable to write to $CONFIG[KEYMON_FILE];
+					};
+				} else {
+					xecho -b keymon.save_keys: Error: Unable to read keys;
+				};
+
+				# increment count 
+				@ reps++;
+			};
+		} else {
+			xecho -b keymon.save_keys: Error: Unable to write to file.;
+		};
+		@ close(fd);
+
+		if (CONFIG[KEYMON_VERBOSE])
+			xecho -b -say keymon.save_keys: Notice: Save complete.;
+	} else {
+		xecho -b -say keymon.save_keys: Error: Unable to count keys.;
+	};
+};
+
+alias keymon.usage (void)
+{
+	xecho -b Usage: /KEYMON <-add|-del> #channel #key ;
+	xecho -b        /KEYMON <-load|-list|-save>;
+};
+
+if (fexist($DS.USER_DIR/$CONFIG.KEYMON_FILE)) { keymon.load_keys; } else { keymon.save_keys; };
+
+# EOF 

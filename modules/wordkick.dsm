@@ -1,0 +1,188 @@
+# version:1.7 loader:pf
+# $Id: wordkick.dsm,v 1.8 2005/02/13 00:05:14 achemze Exp $
+# -----------------------------------------
+# wordkick.dsm - WordKick module for DarkStar/EPIC4
+# -----------------------------------------
+# Written by Joshua Hamor 
+# Copyright (c) 2003-2005 Joshua Hamor & Brian Weiss
+# See the 'COPYRIGHT' file for more information.
+# -----------------------------------------------------
+# This script uses serial number 351 for all /on hooks.
+# -----------------------------------------------------
+queue cleanup.wordkick
+{
+	@ delarray(wordkick.list);
+	^on #-public 351 -"% % *";
+	^on #-public_other 351 -"% % *";
+	^alias -wordkick;
+};
+
+addconfig -b WORDKICK 1;
+addconfig -b WORDKICK_VERBOSE 0;
+addconfig WORDKICK_FILE wordkick.list;
+
+# Force the loading of saved settings
+module.load_saved_settings;
+
+# Set blank entry for proper counting.
+@ setitem(wordkick.list 0 '');
+
+# main alias
+alias wordkick (cmd, args, void)
+{
+	if (cmd) 
+	{
+		switch ($tolower($cmd))
+		{
+			(-add) { wordkick.add $args; }
+			(-del) { wordkick.del $args; }
+	      	      (-erase) { wordkick.erase; }
+	               (-load) { wordkick.load; }
+	               (-list) { wordkick.show; }
+	               (-save) { wordkick.save; }
+		           (*) { wordkick.usage; }
+		}
+	} else { wordkick.usage; };
+};
+alias wordkick.add (word, void)
+{
+	if (!word) { ^local word $"Enter a word: "; };
+
+	@ setitem(wordkick.list $numitems(wordkick.list) $word);
+
+	xecho -b -- wordkick.add: Added \[$word\] to kicklist;
+};
+alias wordkick.create (void)
+{
+	^wordkick.erase;
+	@ :fd = open($DS.USER_DIR/$CONFIG.WORDKICK_FILE W);
+	if (fd)
+	{
+          @ :tmp = [# wordkick list];
+          @ write($fd $tmp);
+          @ close($fd);
+	} else { xecho -b -- wordkick.create: Error: Unable to open wordkick list.; };
+};
+alias wordkick.del (word, void)
+{
+	if (!word) { ^local word "Enter word to delete: "; };
+
+	@ delitem(wordkick.list $getmatches(wordkick.list $word));
+	xecho -b -- wordkick.del: Removed \[$word\];
+};
+alias wordkick.erase (void)
+{
+	@ :ul = unlink($DS.USER_DIR/$CONFIG.WORDKICK_FILE);
+	# if (ul < [1]) { xecho -b -- wordkick.erase: Removed $DS.USER_DIR/$CONFIG.WORDKICK_FILE };
+};
+alias wordkick.load (void)
+{
+	@ :fd = open($DS.USER_DIR/$CONFIG.WORDKICK_FILE R);
+	if (fd)
+	{
+		while (!eof($fd))
+		{
+			@ :tmp = read($fd);
+	     		if (eof($fd) != [1])
+			{
+	       			if (pattern(#* $tmp)) { continue; };
+				@ setitem(wordkick.list $numitems(wordkick.list) $tmp);
+			};
+		};
+	} else { xecho -b wordkick.load: Error: Unable to open wordkick file; };
+};
+alias wordkick.show (void)
+{
+	@ :num = numitems(wordkick.list);
+	@ :reps = 1;
+
+	if (num >= 1)
+	{
+		while ( reps < num )
+		{
+			xecho -b -- $reps $getitem(wordkick.list $reps);
+			@ reps++;
+		};
+	} else {
+		xecho -b wordkick.show: No words in list to show.;
+	};
+};
+alias wordkick.save (void)
+{
+	@ :num = numitems(wordkick.list)-1;
+	@ :reps = 1;
+
+	^wordkick.create;
+	@ :fd = open($DS.USER_DIR/$CONFIG.WORDKICK_FILE W);
+	if (fd)
+	{
+		while ( num > 0 )
+		{
+			@ :word = word(0 $getitem(wordkick.list $num));
+			@ write($fd $word);
+			@ num--;
+			@ reps++;
+		};
+		@ close($fd);
+		xecho -b -- wordkick.save: Save complete.;
+	} else { xecho -b -- wordkick.save: Error: Unable to open wordkick list.; };
+};
+alias wordkick.usage (void) { xecho -b -- Usage: /WORDKICK <-add|-del|-erase|-load|-list|-save> [word]; };
+
+# on hooks
+on #-public 351 "% % *"
+{
+	# stop the show, we're not getting paid!
+	if (!CONFIG[WORDKICK]) { return; };
+	
+	fe ($2-) word
+	{
+		@ :match = matchitem(wordkick.list $word);
+		if (match > -1 )
+		{
+			if (getitem(wordkick.list $match) == [$word])
+			{
+				if (!ischanop($0 $1))
+				{
+					if (onchannel($0 $1))
+					{
+						//mode $1 +b $mask($CONFIG.BANTYPE $userhost($0));
+						//kick $1 $0 BWK: $word;
+						if (CONFIG[WORDKICK_VERBOSE])
+						{ 
+							xecho -b wordkick: Notice: User $0 has been kick/banned.; 
+						};
+						return;
+					} else { xecho -- wordkick.on_public: Error: Unable to kick $0, user isn't on channel ; };
+				} else { xecho -- wordkick.on_public: Error: cannot kick $0, user has OPs; };
+			};
+		};
+	};
+};
+on #-public_other 351 "% % *"
+{
+	# stop the show, we're not getting paid!
+	if (!CONFIG[WORDKICK]) { return; };
+	
+	fe ($2-) word
+	{
+		@ :match = matchitem(wordkick.list $word);
+		if (match > -1 )
+		{
+			if (getitem(wordkick.list $match) == [$word])
+			{
+				if (!ischanop($0 $1))
+				{
+					if (onchannel($0 $1))
+					{
+						^mode $1 +b $mask($CONFIG.BANTYPE $userhost($0));
+						//kick $1 $0 BWK: $word;
+					} else { xecho -- wordkick.on_public: Error: Unable to kick $0, user isn't on channel ; };
+				} else { xecho -- wordkick.on_public: Error: cannot kick $0, user has OPs; };
+			};
+		};
+	};
+};
+
+# load words
+^wordkick.load;

@@ -1,0 +1,129 @@
+# version:1.9.1 loader:pf
+#
+# splitmon.dsm - Split monitor module for Darkstar/EPIC4.
+#
+# Written by Joshua Hamor
+# Copyright (c) 2003 Joshua Hamor
+# See the 'COPYRIGHT' file for more information.
+#
+# This script functions as a split monitor for Darkstar.
+#
+# Uses serial hook 450.
+#
+# .,:([TODO]):,.
+# --------------
+# o 
+#
+
+queue cleanup.splitmon {
+	^bind  nothing;
+	^timer -delete splitmon;
+	^on #-channel_signoff 450 -"% % %.??% ?%.??%";
+	^on #-join 450 -"*";
+	^splitmon.clear;
+	^alias -splitmon;
+	
+};
+
+addconfig -b SPLITMON_DEBUG 0;
+addconfig -b SPLITMON_VERBOSE 1;
+
+on #-channel_signoff 450 "% % ?%.??% ?%.??%"
+{
+	if (CONFIG[SPLITMON_DEBUG]) { xecho -b splitmon: Nick: $1; };
+	@ setitem(splits.nick $numitems(splits.nick) $1 $3 $2 $0);
+
+	if (matchitem(splits.server *$3*) == [-2])
+	{
+		if (CONFIG[SPLITMON_DEBUG]) 
+		{ xecho -b splitmon: server match: $matchitem(splits.server *$3*); };
+		@ setitem(splits.server $numitems(splits.server) $1 $3);
+
+		if (CONFIG[SPLITMON_VERBOSE])
+			{ xecho -b Netsplit: $3 split from $2; };
+	};
+};
+
+^on #-join 450 * {
+	if (matchitem(splits.nick *$0*) > -1)
+	{
+		@ :nick = [$0];
+		@ :nick_i = matchitem(splits.nick *$nick*);
+		@ :server = word(1 $getitem(splits.nick $nick_i));
+		@ delitem(splits.nick $nick_i);
+	if (CONFIG[SPLITMON_DEBUG]) { xecho -b Debug: On Join: nick: $nick server: $server; };
+		if (matchitem(splits.server *$server*) > -1)
+		{
+			if (CONFIG[SPLITMON_DEBUG]) 
+			       { xecho -b splitmon: Removing Server: $server; };
+			@ delitem(splits.server $matchitem(splits.server *$server*));
+			if (matchitem(splits.server *$server*) > -1)
+			{
+				if (CONFIG[SPLITMON_DEBUG]) 
+			       	{ xecho -b splitmon: Removed Server: $server; };
+				if (CONFIG[SPLITMON_VERBOSE])
+					{ xecho -b Net Rejoin: $server; };
+			};
+		};
+	};
+};
+
+alias splitmon (...)
+{
+	switch ($tolower($word(0 $0)))
+	{
+		(-clear) { splitmon.clear; }
+		(-list)	 { splitmon.list; }
+		(*)	 { splitmon.usage; }
+	};
+};
+
+alias splitmon.clear (void)
+{
+	for II in (splits.nick splits.server)
+	{
+		@ delarray($II);
+	};
+};
+
+alias splitmon.init (void)
+{
+	^splitmon.clear;
+	# reset defaults. 
+	@ setitem(splits.nick 0 % %);
+	@ setitem(splits.server 0 % %);
+};
+
+alias splitmon.list (void)
+{
+	if (numitems(splits.nick) > 1)
+	{
+		@ :reps = 1;
+		while ( reps < numitems(splits.server) )
+		{
+ 			@ :nick = word(0 $getitem(splits.nick $reps));
+ 			@ :from = word(1 $getitem(splits.nick $reps));
+ 			@ :to = word(2 $getitem(splits.nick $reps));
+			xecho -b Netsplit: $from split from $to;
+			@ reps++;
+		};
+	} else { xecho -b -- Error: splitmon.list: No splits.; };
+};
+
+alias splitmon.timer (void)
+{
+	# reset split arrays 
+	^splitmon.init;
+
+	# reset timer for 12hrs 
+	^timer -refnum splitmon 43200 ^splitmon.timer;
+};
+
+alias splitmon.usage (void)
+{
+	xecho -b -- Usage: /SPLITMON <-clear|-list>;
+};
+
+^splitmon.timer;
+
+bind  parse_command splitmon.list;
